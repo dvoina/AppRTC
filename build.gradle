@@ -7,7 +7,7 @@ buildscript {
     }
 }
 apply plugin: 'android-library'
-
+apply plugin: 'idea'
 android {
     compileSdkVersion 'android-23'
     buildToolsVersion '23.0.2'
@@ -20,6 +20,9 @@ android {
     }
     lintOptions {
         abortOnError false
+    }
+    dexOptions {
+        incremental true
     }
 }
 

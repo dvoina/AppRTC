@@ -10,10 +10,6 @@
 
 package org.appspot.apprtc;
 
-import org.appspot.apprtc.util.AsyncHttpURLConnection;
-import org.appspot.apprtc.util.AsyncHttpURLConnection.AsyncHttpEvents;
-import org.appspot.apprtc.util.LooperExecutor;
-
 import android.util.Log;
 
 import com.neovisionaries.ws.client.OpeningHandshakeException;
@@ -23,20 +19,21 @@ import com.neovisionaries.ws.client.WebSocketAdapter;
 import com.neovisionaries.ws.client.WebSocketException;
 import com.neovisionaries.ws.client.WebSocketFactory;
 import com.neovisionaries.ws.client.WebSocketFrame;
-import com.neovisionaries.ws.client.WebSocketState;
 
+import org.appspot.apprtc.util.AsyncHttpURLConnection;
+import org.appspot.apprtc.util.AsyncHttpURLConnection.AsyncHttpEvents;
+import org.appspot.apprtc.util.LooperExecutor;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
 /**
  * WebSocket client implementation.
- * <p>
+ * <p/>
  * <p>All public methods should be called from a looper executor thread
  * passed in a constructor, otherwise exception will be thrown.
  * All events are dispatched on the same thread.
@@ -47,6 +44,10 @@ public class WebSocketChannelClient {
     private static final int CLOSE_TIMEOUT = 1000;
     private final WebSocketChannelEvents events;
     private final LooperExecutor executor;
+    private final Object closeEventLock = new Object();
+    // WebSocket send queue. Messages are added to the queue when WebSocket
+    // client is not registered and are consumed in register() call.
+    private final LinkedList<String> wsSendQueue;
     // private WebSocketConnection ws;
     // private WebSocketObserver wsObserver;
     private WebSocket ws;
@@ -56,30 +57,7 @@ public class WebSocketChannelClient {
     private String roomID;
     private String clientID;
     private WebSocketConnectionState state;
-    private final Object closeEventLock = new Object();
     private boolean closeEvent;
-    // WebSocket send queue. Messages are added to the queue when WebSocket
-    // client is not registered and are consumed in register() call.
-    private final LinkedList<String> wsSendQueue;
-
-    /**
-     * Possible WebSocket connection states.
-     */
-    public enum WebSocketConnectionState {
-        NEW, CONNECTED, REGISTERED, CLOSED, ERROR
-    }
-
-    /**
-     * Callback interface for messages delivered on WebSocket.
-     * All events are dispatched from a looper executor thread.
-     */
-    public interface WebSocketChannelEvents {
-        void onWebSocketMessage(final String message);
-
-        void onWebSocketClose();
-
-        void onWebSocketError(final String description);
-    }
 
     public WebSocketChannelClient(LooperExecutor executor, WebSocketChannelEvents events) {
         this.executor = executor;
@@ -126,23 +104,20 @@ public class WebSocketChannelClient {
             // HTTP headers.
             Map<String, List<String>> headers = e.getHeaders();
             System.out.println("=== HTTP Headers ===");
-            for (Map.Entry<String, List<String>> entry : headers.entrySet())
-            {
+            for (Map.Entry<String, List<String>> entry : headers.entrySet()) {
                 // Header name.
                 String name = entry.getKey();
 
                 // Values of the header.
                 List<String> values = entry.getValue();
 
-                if (values == null || values.size() == 0)
-                {
+                if (values == null || values.size() == 0) {
                     // Print the name only.
                     System.out.println(name);
                     continue;
                 }
 
-                for (String value : values)
-                {
+                for (String value : values) {
                     // Print the name and the value.
                     System.out.format("%s: %s\n", name, value);
                 }
@@ -291,6 +266,25 @@ public class WebSocketChannelClient {
         }
     }
 
+    /**
+     * Possible WebSocket connection states.
+     */
+    public enum WebSocketConnectionState {
+        NEW, CONNECTED, REGISTERED, CLOSED, ERROR
+    }
+
+    /**
+     * Callback interface for messages delivered on WebSocket.
+     * All events are dispatched from a looper executor thread.
+     */
+    public interface WebSocketChannelEvents {
+        void onWebSocketMessage(final String message);
+
+        void onWebSocketClose();
+
+        void onWebSocketError(final String description);
+    }
+
     private class WebSocketObserver extends WebSocketAdapter {
         @Override
         public void onConnected(WebSocket ws, Map<String, List<String>> headers) {
@@ -311,8 +305,8 @@ public class WebSocketChannelClient {
         public void onDisconnected(WebSocket websocket,
                                    WebSocketFrame serverCloseFrame, WebSocketFrame clientCloseFrame,
                                    boolean closedByServer) throws Exception {
-            int code = closedByServer ? serverCloseFrame.getCloseCode():clientCloseFrame.getCloseCode();
-            String reason = closedByServer ? serverCloseFrame.getCloseReason():clientCloseFrame.getCloseReason();
+            int code = closedByServer ? serverCloseFrame.getCloseCode() : clientCloseFrame.getCloseCode();
+            String reason = closedByServer ? serverCloseFrame.getCloseReason() : clientCloseFrame.getCloseReason();
             Log.d(TAG, "WebSocket connection closed. Code: " + code
                     + ". Reason: " + reason + ". State: " + state);
             synchronized (closeEventLock) {
